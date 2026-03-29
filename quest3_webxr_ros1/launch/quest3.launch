@@ -1,0 +1,17 @@
+<launch>
+  <!-- Quest 3 WebXR Server launch file for ROS1 -->
+  
+  <!-- Set default parameters -->
+  <arg name="host" default="0.0.0.0" doc="Host address for WebXR server"/>
+  <arg name="http_port" default="8443" doc="HTTP port for WebXR app"/>
+  <arg name="ws_port" default="8080" doc="WebSocket port for communication"/>
+  <arg name="wss_port" default="8444" doc="Secure WebSocket port for communication"/>
+  
+  <!-- Quest 3 WebXR Server node -->
+  <node name="quest3_webxr_server" pkg="quest3_webxr_ros1" type="webxr_server.py" output="screen">
+    <param name="host" value="$(arg host)"/>
+    <param name="http_port" value="$(arg http_port)"/>
+    <param name="ws_port" value="$(arg ws_port)"/>
+    <param name="wss_port" value="$(arg wss_port)"/>
+  </node>
+</launch>
