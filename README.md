@@ -4,7 +4,11 @@
 > 
 > 本项目修改自 [quest3-webxr-ros2](https://github.com/Jdhaworth/quest3-webxr-ros2.git)，感谢原作者的贡献。
 > 
+> 虚拟界面参考自 [XLeRobot](https://github.com/Vector-Wangel/XLeRobot.git)，感谢 Vector-Wangel 提供的虚拟界面设计。
+> 
 > This project is modified from [quest3-webxr-ros2](https://github.com/Jdhaworth/quest3-webxr-ros2.git). Thanks to the original author for their contribution.
+> 
+> Virtual interface reference from [XLeRobot](https://github.com/Vector-Wangel/XLeRobot.git), thanks to Vector-Wangel for the virtual interface design.
 
 [English](#english) | [中文](#中文)
 

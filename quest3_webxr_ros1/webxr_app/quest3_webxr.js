@@ -30,11 +30,10 @@ class Quest3WebXRROS2 {
     }
     
     init() {
-        this.log('Initializing Quest 3 WebXR ROS2 Integration...');
+        this.log('Initializing Quest 3 WebXR ROS2 Integration with A-Frame...');
         
-        // Get canvas and setup WebGL context
+        // A-Frame will handle WebGL context
         this.canvas = document.getElementById('xr-canvas');
-        this.setupWebGL();
         
         // Check WebXR support
         this.checkWebXRSupport();
@@ -45,6 +44,9 @@ class Quest3WebXRROS2 {
         // Set up event listeners
         document.getElementById('enter-vr-btn').addEventListener('click', () => this.enterVR());
         document.getElementById('exit-vr-btn').addEventListener('click', () => this.exitVR());
+        
+        // Store instance globally for A-Frame component to access
+        window.quest3Instance = this;
     }
     
     log(message) {
@@ -55,46 +57,7 @@ class Quest3WebXRROS2 {
         console.log('[Quest3 WebXR]', message);
     }
     
-    setupWebGL() {
-        this.log('Setting up WebGL context...');
-        
-        try {
-            // Create WebGL context with xrCompatible flag and alpha support
-            this.gl = this.canvas.getContext('webgl', { 
-                xrCompatible: true,
-                antialias: true,
-                depth: true,
-                alpha: true,
-                premultipliedAlpha: false
-            });
-            
-            if (!this.gl) {
-                this.log('ERROR: WebGL context creation failed');
-                document.getElementById('webgl-status').className = 'status error';
-                document.getElementById('webgl-status-text').textContent = 'Failed';
-                return;
-            }
-            
-            this.log('SUCCESS: WebGL context created with xrCompatible flag');
-            document.getElementById('webgl-status').className = 'status success';
-            document.getElementById('webgl-status-text').textContent = 'Ready';
-            
-            // Set canvas size
-            this.canvas.width = this.canvas.clientWidth;
-            this.canvas.height = this.canvas.clientHeight;
-            
-            // Basic WebGL setup for transparency
-            this.gl.clearColor(0.0, 0.0, 0.0, 0.0); // Transparent background
-            this.gl.enable(this.gl.DEPTH_TEST);
-            this.gl.enable(this.gl.BLEND);
-            this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
-            
-        } catch (error) {
-            this.log('ERROR: WebGL setup failed: ' + error.message);
-            document.getElementById('webgl-status').className = 'status error';
-            document.getElementById('webgl-status-text').textContent = 'Failed';
-        }
-    }
+
     
     checkWebXRSupport() {
         this.log('Checking WebXR support...');
@@ -128,6 +91,10 @@ class Quest3WebXRROS2 {
             statusText.textContent = 'WebXR check failed';
             this.log('ERROR: WebXR check failed: ' + error.message);
         });
+        
+        // Update WebGL status - A-Frame handles this
+        document.getElementById('webgl-status').className = 'status success';
+        document.getElementById('webgl-status-text').textContent = 'A-Frame managed';
     }
     
     setupWebSocket() {
@@ -164,181 +131,42 @@ class Quest3WebXRROS2 {
     
     async enterVR() {
         try {
-            this.log('Attempting to enter VR...');
+            this.log('Attempting to enter VR via A-Frame...');
             
-            if (!this.gl) {
-                throw new Error('WebGL context not available');
+            // Use A-Frame to enter VR
+            const sceneEl = document.querySelector('a-scene');
+            if (sceneEl) {
+                sceneEl.enterVR(true).catch((err) => {
+                    this.log('ERROR: A-Frame failed to enter VR: ' + err.message);
+                    alert(`Failed to start VR session via A-Frame: ${err.message}`);
+                });
+                
+                // Update UI when A-Frame enters VR
+                sceneEl.addEventListener('enter-vr', () => {
+                    this.log('SUCCESS: VR session started via A-Frame!');
+                    document.getElementById('enter-vr-btn').disabled = true;
+                    document.getElementById('exit-vr-btn').disabled = false;
+                    document.getElementById('session-status').className = 'status success';
+                    document.getElementById('session-status-text').textContent = 'Active';
+                });
+                
+                sceneEl.addEventListener('exit-vr', () => {
+                    this.onXRSessionEnd();
+                });
+            } else {
+                this.log('ERROR: A-Frame scene not found');
+                alert('A-Frame scene not found');
             }
-            
-            // Request XR session with Quest 3 specific features
-            this.xrSession = await navigator.xr.requestSession('immersive-vr', {
-                requiredFeatures: ['local-floor'],
-                optionalFeatures: ['hand-tracking', 'bounded-floor']
-            });
-            
-            this.log('SUCCESS: XR session created');
-            
-            // Set up XR session
-            this.xrSession.addEventListener('end', () => this.onXRSessionEnd());
-            
-            // Create XR WebGL layer with transparency support for passthrough
-            const xrWebGLLayer = new XRWebGLLayer(this.xrSession, this.gl, {
-                alpha: true,
-                antialias: true,
-                depth: true,
-                stencil: false,
-                ignoreDepthValues: false
-            });
-            this.xrSession.updateRenderState({ baseLayer: xrWebGLLayer });
-            
-            this.log('SUCCESS: XR WebGL layer created');
-            
-            // Request reference space
-            this.xrReferenceSpace = await this.xrSession.requestReferenceSpace('local-floor');
-            this.log('SUCCESS: Reference space created');
-            
-            // Update UI
-            document.getElementById('enter-vr-btn').disabled = true;
-            document.getElementById('exit-vr-btn').disabled = false;
-            
-            // Update status
-            document.getElementById('session-status').className = 'status success';
-            document.getElementById('session-status-text').textContent = 'Active';
-            
-            this.log('SUCCESS: VR session started successfully!');
-            
-            // Start render loop
-            this.startRenderLoop();
             
         } catch (error) {
             this.log('ERROR: Failed to enter VR: ' + error.message);
-            this.log('Error details: ' + JSON.stringify(error));
             alert('Failed to enter VR: ' + error.message);
         }
     }
     
-    startRenderLoop() {
-        const renderLoop = (time, frame) => {
-            if (this.xrSession) {
-                const session = frame.session;
-                const gl = this.gl;
-                
-                // Get viewer pose
-                const pose = frame.getViewerPose(this.xrReferenceSpace);
-                
-                if (pose) {
-                    // Bind the framebuffer
-                    gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
-                    
-                    // Clear the screen
-                    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-                    
-                    // Render for each view
-                    for (const view of pose.views) {
-                        const viewport = session.renderState.baseLayer.getViewport(view);
-                        gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
-                        
-                        // Transparent background for passthrough
-                        gl.clearColor(0.0, 0.0, 0.0, 0.0);
-                        gl.clear(gl.COLOR_BUFFER_BIT);
-                    }
-                    
-                    // Update controller and headset data
-                    this.updateQuest3Data(frame);
-                }
-                
-                // Continue the render loop
-                session.requestAnimationFrame(renderLoop);
-            }
-        };
-        
-        this.xrSession.requestAnimationFrame(renderLoop);
-        this.log('Render loop started');
-    }
+
     
-    updateQuest3Data(frame) {
-        // Get input sources (controllers)
-        const inputSources = frame.session.inputSources;
-        
-        // Get headset pose (viewer pose) for world coordinates
-        const viewerPose = frame.getViewerPose(this.xrReferenceSpace);
-        if (viewerPose) {
-            const headsetTransform = viewerPose.transform;
-            this.controllerData.headset = {
-                position: {
-                    x: headsetTransform.position.x,
-                    y: headsetTransform.position.y,
-                    z: headsetTransform.position.z
-                },
-                rotation: {
-                    x: headsetTransform.orientation.x,
-                    y: headsetTransform.orientation.y,
-                    z: headsetTransform.orientation.z,
-                    w: headsetTransform.orientation.w
-                }
-            };
-            
-            // Update headset status
-            document.getElementById('headset-status').textContent = 'Active';
-        }
-        
-        // Process controllers
-        for (let i = 0; i < inputSources.length; i++) {
-            const inputSource = inputSources[i];
-            const hand = inputSource.handedness; // 'left' or 'right'
-            
-            if (hand === 'left' || hand === 'right') {
-                // Update controller status
-                document.getElementById(`${hand}-status`).textContent = 'Active';
-                
-                // Always get button data, regardless of pose availability
-                const buttons = this.getControllerButtons(inputSource, hand);
-                
-                // Get controller pose in world coordinates
-                const gripPose = frame.getPose(inputSource.gripSpace, this.xrReferenceSpace);
-                if (gripPose && viewerPose) {
-                    // Calculate position relative to headset
-                    const worldPos = gripPose.transform.position;
-                    const headsetPos = viewerPose.transform.position;
-                    const headsetRot = viewerPose.transform.orientation;
-                    
-                    // Calculate relative position (controller - headset)
-                    const translatedPos = {
-                        x: worldPos.x - headsetPos.x,
-                        y: worldPos.y - headsetPos.y,
-                        z: worldPos.z - headsetPos.z
-                    };
-                    
-                    // Apply inverse headset rotation to get headset-relative coordinates
-                    const relativePos = this.rotateVectorByQuaternion(translatedPos, this.inverseQuaternion(headsetRot));
-                    
-                    this.controllerData[hand] = {
-                        position: relativePos,
-                        rotation: {
-                            x: gripPose.transform.orientation.x,
-                            y: gripPose.transform.orientation.y,
-                            z: gripPose.transform.orientation.z,
-                            w: gripPose.transform.orientation.w
-                        },
-                        buttons: buttons
-                    };
-                } else {
-                    // If pose not available, still send button data with default position/rotation
-                    this.controllerData[hand] = {
-                        position: { x: 0, y: 0, z: 0 },
-                        rotation: { x: 0, y: 0, z: 0, w: 1 },
-                        buttons: buttons
-                    };
-                }
-                
-                // Update UI with controller data
-                this.updateControllerUI(hand);
-            }
-        }
-        
-        // Send all data to ROS2
-        this.sendQuest3Data();
-    }
+    // Note: updateQuest3Data is now handled by A-Frame controller-updater component
     
     getControllerButtons(inputSource, hand) {
         const buttons = {};
@@ -407,82 +235,17 @@ class Quest3WebXRROS2 {
         }
     }
     
-    sendQuest3Data() {
-        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-            const data = {
-                type: 'quest3_data',
-                timestamp: Date.now(),
-                headset: this.controllerData.headset,
-                left: this.controllerData.left,
-                right: this.controllerData.right
-            };
-            
-            // Debug: Log button data being sent (commented out for performance)
-            // if (this.controllerData.left && this.controllerData.left.buttons) {
-            //     const leftButtons = Object.entries(this.controllerData.left.buttons)
-            //         .filter(([key, value]) => value && key !== 'thumbstick_x' && key !== 'thumbstick_y')
-            //         .map(([key, value]) => key);
-            //     if (leftButtons.length > 0) {
-            //         this.log(`Sending left buttons: ${leftButtons.join(', ')}`);
-            //     }
-            // }
-            // 
-            // if (this.controllerData.right && this.controllerData.right.buttons) {
-            //     const rightButtons = Object.entries(this.controllerData.right.buttons)
-            //         .filter(([key, value]) => value && key !== 'thumbstick_x' && key !== 'thumbstick_y')
-            //         .map(([key, value]) => key);
-            //     if (rightButtons.length > 0) {
-            //         this.log(`Sending right buttons: ${rightButtons.join(', ')}`);
-            //     }
-            // }
-            
-            this.websocket.send(JSON.stringify(data));
-        }
-    }
+    // Note: sendQuest3Data is now handled by A-Frame controller-updater component
     
-    // Helper function to calculate inverse quaternion
-    inverseQuaternion(q) {
-        return {
-            x: -q.x,
-            y: -q.y,
-            z: -q.z,
-            w: q.w
-        };
-    }
-    
-    // Helper function to rotate a vector by a quaternion
-    rotateVectorByQuaternion(v, q) {
-        // Convert vector to quaternion (w=0)
-        const vQuat = { x: v.x, y: v.y, z: v.z, w: 0 };
-        
-        // q * v * q^-1
-        const qInverse = this.inverseQuaternion(q);
-        const result = this.multiplyQuaternions(
-            this.multiplyQuaternions(q, vQuat),
-            qInverse
-        );
-        
-        return {
-            x: result.x,
-            y: result.y,
-            z: result.z
-        };
-    }
-    
-    // Helper function to multiply two quaternions
-    multiplyQuaternions(q1, q2) {
-        return {
-            x: q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
-            y: q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
-            z: q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
-            w: q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z
-        };
-    }
+    // Note: Helper functions are now handled by A-Frame controller-updater component
     
     exitVR() {
-        if (this.xrSession) {
-            this.log('Exiting VR...');
-            this.xrSession.end();
+        this.log('Exiting VR...');
+        const sceneEl = document.querySelector('a-scene');
+        if (sceneEl) {
+            sceneEl.exitVR();
+        } else {
+            this.log('ERROR: A-Frame scene not found');
         }
     }
     
@@ -503,16 +266,374 @@ class Quest3WebXRROS2 {
         document.getElementById('headset-status').textContent = 'Not detected';
         document.getElementById('left-status').textContent = 'Not detected';
         document.getElementById('right-status').textContent = 'Not detected';
-        
-        // Clear canvas with transparent background
-        if (this.gl) {
-            this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-            this.gl.clear(this.gl.COLOR_BUFFER_BIT);
-        }
     }
 }
 
 // Initialize when page loads
 window.addEventListener('load', () => {
     new Quest3WebXRROS2();
+});
+
+// A-Frame controller-updater component for transparent VR scene
+AFRAME.registerComponent('controller-updater', {
+    init: function () {
+        console.log("Controller updater component initialized for transparent VR scene.");
+        
+        // Get A-Frame entities
+        this.leftHand = document.querySelector('#leftHand');
+        this.rightHand = document.querySelector('#rightHand');
+        this.leftHandInfoText = document.querySelector('#leftHandInfo');
+        this.rightHandInfoText = document.querySelector('#rightHandInfo');
+        
+        // Add headset tracking
+        this.headset = document.querySelector('#headset');
+        this.headsetInfoText = document.querySelector('#headsetInfo');
+        
+        // WebSocket for data transmission (reuse existing connection)
+        this.websocket = null;
+        this.setupAFrameWebSocket();
+        
+        // Get existing Quest3WebXRROS2 instance for data access
+        this.quest3Instance = null;
+        
+        // Try to find existing instance or wait for it
+        this.waitForQuest3Instance();
+        
+        if (!this.leftHand || !this.rightHand) {
+            console.error("Controller entities not found!");
+            return;
+        }
+        
+        // Apply initial rotation to text elements
+        const textRotation = '-90 0 0';
+        if (this.leftHandInfoText) this.leftHandInfoText.setAttribute('rotation', textRotation);
+        if (this.rightHandInfoText) this.rightHandInfoText.setAttribute('rotation', textRotation);
+        
+        // Create axis indicators for controllers
+        this.createAxisIndicators();
+    },
+    
+    setupAFrameWebSocket: function() {
+        // Setup WebSocket connection for A-Frame data
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = window.location.protocol === 'https:' ? '8444' : '8080';
+        const wsUrl = `${protocol}//${window.location.hostname}:${port}`;
+        
+        this.websocket = new WebSocket(wsUrl);
+        
+        this.websocket.onopen = () => {
+            console.log('A-Frame WebSocket connected');
+        };
+        
+        this.websocket.onclose = () => {
+            console.log('A-Frame WebSocket disconnected');
+        };
+        
+        this.websocket.onerror = (error) => {
+            console.error('A-Frame WebSocket error:', error);
+        };
+    },
+    
+    waitForQuest3Instance: function() {
+        // Wait for Quest3WebXRROS2 instance to be available
+        const checkInterval = setInterval(() => {
+            // Look for existing instance in global scope or DOM
+            const instances = document.querySelectorAll('[data-quest3-instance]');
+            if (instances.length > 0) {
+                this.quest3Instance = instances[0].__quest3Instance;
+                clearInterval(checkInterval);
+                console.log('Found Quest3WebXRROS2 instance');
+            }
+            
+            // Also check if we can find it through window
+            if (window.quest3Instance) {
+                this.quest3Instance = window.quest3Instance;
+                clearInterval(checkInterval);
+                console.log('Found Quest3WebXRROS2 instance via window');
+            }
+        }, 1000);
+    },
+    
+    createAxisIndicators: function() {
+        // Create simple axis indicators for both controllers
+        
+        // Left Controller Axes
+        // X-axis (Red)
+        const leftXAxis = document.createElement('a-cylinder');
+        leftXAxis.setAttribute('height', '0.08');
+        leftXAxis.setAttribute('radius', '0.003');
+        leftXAxis.setAttribute('color', '#ff0000');
+        leftXAxis.setAttribute('position', '0.04 0 0');
+        leftXAxis.setAttribute('rotation', '0 0 90');
+        this.leftHand.appendChild(leftXAxis);
+        
+        // Y-axis (Green)
+        const leftYAxis = document.createElement('a-cylinder');
+        leftYAxis.setAttribute('height', '0.08');
+        leftYAxis.setAttribute('radius', '0.003');
+        leftYAxis.setAttribute('color', '#00ff00');
+        leftYAxis.setAttribute('position', '0 0.04 0');
+        leftYAxis.setAttribute('rotation', '0 0 0');
+        this.leftHand.appendChild(leftYAxis);
+        
+        // Z-axis (Blue)
+        const leftZAxis = document.createElement('a-cylinder');
+        leftZAxis.setAttribute('height', '0.08');
+        leftZAxis.setAttribute('radius', '0.003');
+        leftZAxis.setAttribute('color', '#0000ff');
+        leftZAxis.setAttribute('position', '0 0 0.04');
+        leftZAxis.setAttribute('rotation', '90 0 0');
+        this.leftHand.appendChild(leftZAxis);
+        
+        // Right Controller Axes
+        // X-axis (Red)
+        const rightXAxis = document.createElement('a-cylinder');
+        rightXAxis.setAttribute('height', '0.08');
+        rightXAxis.setAttribute('radius', '0.003');
+        rightXAxis.setAttribute('color', '#ff0000');
+        rightXAxis.setAttribute('position', '0.04 0 0');
+        rightXAxis.setAttribute('rotation', '0 0 90');
+        this.rightHand.appendChild(rightXAxis);
+        
+        // Y-axis (Green)
+        const rightYAxis = document.createElement('a-cylinder');
+        rightYAxis.setAttribute('height', '0.08');
+        rightYAxis.setAttribute('radius', '0.003');
+        rightYAxis.setAttribute('color', '#00ff00');
+        rightYAxis.setAttribute('position', '0 0.04 0');
+        rightYAxis.setAttribute('rotation', '0 0 0');
+        this.rightHand.appendChild(rightYAxis);
+        
+        // Z-axis (Blue)
+        const rightZAxis = document.createElement('a-cylinder');
+        rightZAxis.setAttribute('height', '0.08');
+        rightZAxis.setAttribute('radius', '0.003');
+        rightZAxis.setAttribute('color', '#0000ff');
+        rightZAxis.setAttribute('position', '0 0 0.04');
+        rightZAxis.setAttribute('rotation', '90 0 0');
+        this.rightHand.appendChild(rightZAxis);
+        
+        console.log('Axis indicators created for both controllers');
+    },
+    
+    tick: function () {
+        // Update controller text if controllers are visible
+        if (!this.leftHand || !this.rightHand) return;
+        
+        // Collect data from both controllers
+        const leftController = {
+            hand: 'left',
+            position: null,
+            rotation: null
+        };
+        
+        const rightController = {
+            hand: 'right',
+            position: null,
+            rotation: null
+        };
+        
+        // Collect headset data
+        const headset = {
+            position: null,
+            rotation: null
+        };
+        
+        // Update Left Hand Text & Collect Data
+        if (this.leftHand && this.leftHand.object3D && this.leftHand.object3D.visible) {
+            const leftPos = this.leftHand.object3D.position;
+            const leftRotEuler = this.leftHand.object3D.rotation;
+            const leftRotX = THREE.MathUtils.radToDeg(leftRotEuler.x);
+            const leftRotY = THREE.MathUtils.radToDeg(leftRotEuler.y);
+            const leftRotZ = THREE.MathUtils.radToDeg(leftRotEuler.z);
+            
+            const leftText = `Pos: ${leftPos.x.toFixed(2)} ${leftPos.y.toFixed(2)} ${leftPos.z.toFixed(2)}\\nRot: ${leftRotX.toFixed(0)} ${leftRotY.toFixed(0)} ${leftRotZ.toFixed(0)}`;
+            
+            if (this.leftHandInfoText) {
+                this.leftHandInfoText.setAttribute('value', leftText);
+            }
+            
+            // Collect left controller data
+            leftController.position = { x: leftPos.x, y: leftPos.y, z: leftPos.z };
+            leftController.rotation = { x: leftRotX, y: leftRotY, z: leftRotZ };
+            leftController.quaternion = {
+                x: this.leftHand.object3D.quaternion.x,
+                y: this.leftHand.object3D.quaternion.y,
+                z: this.leftHand.object3D.quaternion.z,
+                w: this.leftHand.object3D.quaternion.w
+            };
+            
+            // Collect left controller buttons and thumbstick
+            if (this.leftHand && this.leftHand.components && this.leftHand.components['tracked-controls']) {
+                const leftGamepad = this.leftHand.components['tracked-controls'].controller?.gamepad;
+                if (leftGamepad) {
+                    // Thumbstick
+                    leftController.thumbstick = {
+                        x: leftGamepad.axes[2] || 0,
+                        y: leftGamepad.axes[3] || 0
+                    };
+                    // Buttons - using correct names for server
+                    leftController.buttons = {
+                        trigger: !!leftGamepad.buttons[0]?.pressed,
+                        grip: !!leftGamepad.buttons[1]?.pressed,
+                        menu: !!leftGamepad.buttons[2]?.pressed,
+                        thumbstick: !!leftGamepad.buttons[3]?.pressed,
+                        x: !!leftGamepad.buttons[4]?.pressed,
+                        y: !!leftGamepad.buttons[5]?.pressed,
+                        thumbstick_x: leftGamepad.axes[2] || 0.0,
+                        thumbstick_y: leftGamepad.axes[3] || 0.0
+                    };
+                    leftController.trigger = leftGamepad.buttons[0]?.pressed ? 1 : 0;
+                    leftController.gripActive = !!leftGamepad.buttons[1]?.pressed;
+                }
+            }
+        }
+        
+        // Update Right Hand Text & Collect Data
+        if (this.rightHand && this.rightHand.object3D && this.rightHand.object3D.visible) {
+            const rightPos = this.rightHand.object3D.position;
+            const rightRotEuler = this.rightHand.object3D.rotation;
+            const rightRotX = THREE.MathUtils.radToDeg(rightRotEuler.x);
+            const rightRotY = THREE.MathUtils.radToDeg(rightRotEuler.y);
+            const rightRotZ = THREE.MathUtils.radToDeg(rightRotEuler.z);
+            
+            const rightText = `Pos: ${rightPos.x.toFixed(2)} ${rightPos.y.toFixed(2)} ${rightPos.z.toFixed(2)}\\nRot: ${rightRotX.toFixed(0)} ${rightRotY.toFixed(0)} ${rightRotZ.toFixed(0)}`;
+            
+            if (this.rightHandInfoText) {
+                this.rightHandInfoText.setAttribute('value', rightText);
+            }
+            
+            // Collect right controller data
+            rightController.position = { x: rightPos.x, y: rightPos.y, z: rightPos.z };
+            rightController.rotation = { x: rightRotX, y: rightRotY, z: rightRotZ };
+            rightController.quaternion = {
+                x: this.rightHand.object3D.quaternion.x,
+                y: this.rightHand.object3D.quaternion.y,
+                z: this.rightHand.object3D.quaternion.z,
+                w: this.rightHand.object3D.quaternion.w
+            };
+            
+            // Collect right controller buttons and thumbstick
+            if (this.rightHand && this.rightHand.components && this.rightHand.components['tracked-controls']) {
+                const rightGamepad = this.rightHand.components['tracked-controls'].controller?.gamepad;
+                if (rightGamepad) {
+                    // Thumbstick
+                    rightController.thumbstick = {
+                        x: rightGamepad.axes[2] || 0,
+                        y: rightGamepad.axes[3] || 0
+                    };
+                    // Buttons - using correct names for server
+                    rightController.buttons = {
+                        trigger: !!rightGamepad.buttons[0]?.pressed,
+                        grip: !!rightGamepad.buttons[1]?.pressed,
+                        menu: !!rightGamepad.buttons[2]?.pressed,
+                        thumbstick: !!rightGamepad.buttons[3]?.pressed,
+                        a: !!rightGamepad.buttons[4]?.pressed,
+                        b: !!rightGamepad.buttons[5]?.pressed,
+                        thumbstick_x: rightGamepad.axes[2] || 0.0,
+                        thumbstick_y: rightGamepad.axes[3] || 0.0
+                    };
+                    rightController.trigger = rightGamepad.buttons[0]?.pressed ? 1 : 0;
+                    rightController.gripActive = !!rightGamepad.buttons[1]?.pressed;
+                }
+            }
+        }
+        
+        // Collect headset data
+        if (this.headset && this.headset.object3D && this.headset.object3D.visible) {
+            const headsetPos = this.headset.object3D.position;
+            const headsetRotEuler = this.headset.object3D.rotation;
+            const headsetRotX = THREE.MathUtils.radToDeg(headsetRotEuler.x);
+            const headsetRotY = THREE.MathUtils.radToDeg(headsetRotEuler.y);
+            const headsetRotZ = THREE.MathUtils.radToDeg(headsetRotEuler.z);
+            
+            // Update headset info text
+            const headsetText = `Pos: ${headsetPos.x.toFixed(2)} ${headsetPos.y.toFixed(2)} ${headsetPos.z.toFixed(2)}\\nRot: ${headsetRotX.toFixed(0)} ${headsetRotY.toFixed(0)} ${headsetRotZ.toFixed(0)}`;
+            if (this.headsetInfoText) {
+                this.headsetInfoText.setAttribute('value', headsetText);
+            }
+            
+            // Collect headset data
+            headset.position = { x: headsetPos.x, y: headsetPos.y, z: headsetPos.z };
+            headset.rotation = { x: headsetRotX, y: headsetRotY, z: headsetRotZ };
+            headset.quaternion = {
+                x: this.headset.object3D.quaternion.x,
+                y: this.headset.object3D.quaternion.y,
+                z: this.headset.object3D.quaternion.z,
+                w: this.headset.object3D.quaternion.w
+            };
+        }
+        
+        // Send combined packet if WebSocket is open and at least one controller has valid data
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            const hasValidLeft = leftController.position !== null;
+            const hasValidRight = rightController.position !== null;
+            const hasValidHeadset = headset.position !== null;
+            
+            if (hasValidLeft || hasValidRight || hasValidHeadset) {
+                const dualControllerData = {
+                    type: 'quest3_data',
+                    timestamp: Date.now(),
+                    headset: headset,
+                    left: leftController,
+                    right: rightController
+                };
+                this.websocket.send(JSON.stringify(dualControllerData));
+                
+                // Debug: Log button data
+                if (leftController.buttons) {
+                    const pressedLeft = Object.entries(leftController.buttons)
+                        .filter(([key, value]) => value && key !== 'thumbstick_x' && key !== 'thumbstick_y')
+                        .map(([key, value]) => key);
+                    if (pressedLeft.length > 0) {
+                        console.log('Left buttons pressed:', pressedLeft.join(', '));
+                    }
+                }
+                if (rightController.buttons) {
+                    const pressedRight = Object.entries(rightController.buttons)
+                        .filter(([key, value]) => value && key !== 'thumbstick_x' && key !== 'thumbstick_y')
+                        .map(([key, value]) => key);
+                    if (pressedRight.length > 0) {
+                        console.log('Right buttons pressed:', pressedRight.join(', '));
+                    }
+                }
+                
+                console.log('Sending A-Frame VR data:', {
+                    left: hasValidLeft ? 'valid' : 'invalid',
+                    right: hasValidRight ? 'valid' : 'invalid',
+                    headset: hasValidHeadset ? 'valid' : 'invalid',
+                    hasLeftButtons: !!leftController.buttons,
+                    hasRightButtons: !!rightController.buttons
+                });
+            }
+        }
+    }
+});
+
+// Add the component to the scene after it's loaded
+document.addEventListener('DOMContentLoaded', (event) => {
+    const scene = document.querySelector('a-scene');
+    
+    if (scene) {
+        // Listen for controller connection events
+        scene.addEventListener('controllerconnected', (evt) => {
+            console.log('Controller CONNECTED:', evt.detail.name, evt.detail.component.data.hand);
+        });
+        scene.addEventListener('controllerdisconnected', (evt) => {
+            console.log('Controller DISCONNECTED:', evt.detail.name, evt.detail.component.data.hand);
+        });
+        
+        // Add controller-updater component when scene is loaded
+        if (scene.hasLoaded) {
+            scene.setAttribute('controller-updater', '');
+            console.log("controller-updater component added immediately.");
+        } else {
+            scene.addEventListener('loaded', () => {
+                scene.setAttribute('controller-updater', '');
+                console.log("controller-updater component added after scene loaded.");
+            });
+        }
+    } else {
+        console.error('A-Frame scene not found!');
+    }
 });

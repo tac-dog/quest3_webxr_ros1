@@ -7,14 +7,24 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
             font-family: Arial, sans-serif;
-            background: #1a1a1a;
+            background: transparent;
             color: white;
+            overflow: hidden;
         }
         .container {
-            max-width: 800px;
-            margin: 0 auto;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #333;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
         }
         .status {
             background: #333;
@@ -53,11 +63,7 @@
             cursor: not-allowed;
         }
         #xr-canvas {
-            width: 100%;
-            height: 400px;
-            background: transparent;
-            border-radius: 8px;
-            margin: 20px 0;
+            display: none;
         }
         .log {
             background: #000;
@@ -72,14 +78,15 @@
         }
         .ui-overlay {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 10px;
+            right: 10px;
             z-index: 1000;
             background: rgba(0, 0, 0, 0.8);
             padding: 15px;
             border-radius: 10px;
             border: 2px solid #333;
             max-width: 300px;
+            font-size: 12px;
         }
         .controller-info {
             margin: 5px 0;
@@ -132,6 +139,26 @@
         </div>
     </div>
 
+    <script src="https://aframe.io/releases/1.7.1/aframe.min.js"></script>
     <script src="quest3_webxr.js"></script>
+    
+    <!-- A-Frame VR Scene with passthrough -->
+    <a-scene vr-mode-ui="enabled: true;">
+      <!-- Passthrough setup -->
+      <a-entity webxr-passthrough="referenceSpaceType: local-floor"></a-entity>
+
+      <!-- Headset tracking entity -->
+      <a-entity id="headset" camera>
+        <a-text id="headsetInfo" value="Headset: ..." position="0 0.2 -0.5" rotation="0 0 0" scale="0.05 0.05 0.05" color="yellow" align="center"></a-text>
+      </a-entity>
+
+      <!-- Controllers -->
+      <a-entity id="leftHand" oculus-touch-controls="hand: left">
+        <a-text id="leftHandInfo" value="Pos: ...\nRot: ..." position="0 0.04 -0.05" rotation="0 0 0" scale="0.05 0.05 0.05" color="white" align="center"></a-text>
+      </a-entity>
+      <a-entity id="rightHand" oculus-touch-controls="hand: right">
+        <a-text id="rightHandInfo" value="Pos: ...\nRot: ..." position="0 0.04 -0.05" rotation="0 0 0" scale="0.05 0.05 0.05" color="white" align="center"></a-text>
+      </a-entity>
+    </a-scene>
 </body>
 </html>
