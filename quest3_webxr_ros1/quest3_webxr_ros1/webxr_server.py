@@ -92,9 +92,9 @@ class Quest3WebXRServer:
         
         # Quest 3 controller state tracking
         self.controller_data = {
-            'headset': {'position': None, 'rotation': None, 'timestamp': None},
-            'left': {'position': None, 'rotation': None, 'buttons': {}, 'timestamp': None},
-            'right': {'position': None, 'rotation': None, 'buttons': {}, 'timestamp': None}
+            'headset': {'position': None, 'quaternion': None, 'timestamp': None},
+            'left': {'position': None, 'quaternion': None, 'buttons': {}, 'timestamp': None},
+            'right': {'position': None, 'quaternion': None, 'buttons': {}, 'timestamp': None}
         }
         
         # ROS1 publishers
@@ -176,12 +176,12 @@ class Quest3WebXRServer:
             if 'headset' in data:
                 headset_data = data['headset']
                 pos = headset_data.get('position', {})
-                rot = headset_data.get('rotation', {})
+                quat = headset_data.get('quaternion', {})
                 logger.info(f"Headset position type: {type(pos)}, value: {pos}")
-                logger.info(f"Headset rotation type: {type(rot)}, value: {rot}")
+                logger.info(f"Headset quaternion type: {type(quat)}, value: {quat}")
                 self.controller_data['headset'] = {
                     'position': pos,
-                    'rotation': rot,
+                    'quaternion': quat,
                     'timestamp': timestamp
                 }
                 await self.publish_headset_data()
@@ -192,12 +192,12 @@ class Quest3WebXRServer:
                     controller_data = data[controller]
                     buttons = controller_data.get('buttons', {})
                     pos = controller_data.get('position', {})
-                    rot = controller_data.get('rotation', {})
+                    quat = controller_data.get('quaternion', {})
                     logger.info(f"{controller} controller position type: {type(pos)}, value: {pos}")
                     
                     self.controller_data[controller] = {
                         'position': pos,
-                        'rotation': rot,
+                        'quaternion': quat,
                         'buttons': buttons,
                         'timestamp': timestamp
                     }
@@ -211,7 +211,7 @@ class Quest3WebXRServer:
         """Publish headset transform data"""
         try:
             headset_data = self.controller_data['headset']
-            if not headset_data['position'] or not headset_data['rotation']:
+            if not headset_data['position'] or not headset_data['quaternion']:
                 return
             
             # Create TransformStamped message
@@ -226,12 +226,12 @@ class Quest3WebXRServer:
             transform_msg.transform.translation.y = safe_get(pos, 'y', 0.0)
             transform_msg.transform.translation.z = safe_get(pos, 'z', 0.0)
             
-            # Set rotation
-            rot = headset_data['rotation']
-            transform_msg.transform.rotation.x = safe_get(rot, 'x', 0.0)
-            transform_msg.transform.rotation.y = safe_get(rot, 'y', 0.0)
-            transform_msg.transform.rotation.z = safe_get(rot, 'z', 0.0)
-            transform_msg.transform.rotation.w = safe_get(rot, 'w', 1.0)
+            # Set rotation from quaternion
+            quat = headset_data['quaternion']
+            transform_msg.transform.rotation.x = safe_get(quat, 'x', 0.0)
+            transform_msg.transform.rotation.y = safe_get(quat, 'y', 0.0)
+            transform_msg.transform.rotation.z = safe_get(quat, 'z', 0.0)
+            transform_msg.transform.rotation.w = safe_get(quat, 'w', 1.0)
             
             # Publish to topic
             self.headset_transform_pub.publish(transform_msg)
@@ -254,7 +254,7 @@ class Quest3WebXRServer:
         """Publish controller transform and button data"""
         try:
             controller_data = self.controller_data[controller]
-            if not controller_data['position'] or not controller_data['rotation']:
+            if not controller_data['position'] or not controller_data['quaternion']:
                 return
             
             # Create TransformStamped message
@@ -269,12 +269,12 @@ class Quest3WebXRServer:
             transform_msg.transform.translation.y = safe_get(pos, 'y', 0.0)
             transform_msg.transform.translation.z = safe_get(pos, 'z', 0.0)
             
-            # Set rotation
-            rot = controller_data['rotation']
-            transform_msg.transform.rotation.x = safe_get(rot, 'x', 0.0)
-            transform_msg.transform.rotation.y = safe_get(rot, 'y', 0.0)
-            transform_msg.transform.rotation.z = safe_get(rot, 'z', 0.0)
-            transform_msg.transform.rotation.w = safe_get(rot, 'w', 1.0)
+            # Set rotation from quaternion
+            quat = controller_data['quaternion']
+            transform_msg.transform.rotation.x = safe_get(quat, 'x', 0.0)
+            transform_msg.transform.rotation.y = safe_get(quat, 'y', 0.0)
+            transform_msg.transform.rotation.z = safe_get(quat, 'z', 0.0)
+            transform_msg.transform.rotation.w = safe_get(quat, 'w', 1.0)
             
             # Publish transform to topic
             if controller == 'left':
